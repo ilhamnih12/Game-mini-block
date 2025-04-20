@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mini Bloxd</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://threejs.org/examples/js/loaders/FontLoader.js"></script>
+    <script src="https://threejs.org/examples/js/geometries/TextGeometry.js"></script>
+</head>
+<body>
+    <div id="inputContainer">
+        <input type="text" id="nameInput" placeholder="Masukkan nama">
+        <button onclick="startGame()">Mulai Game</button>
+    </div>
+    <button id="ubahKamera" style="
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    z-index: 10;
+    padding: 8px 16px;
+    background: rgba(0,0,0,0.6);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    ">Ubah</button>
+
+    <script>
+        let playerName = "";
+        let playerId = Math.random().toString(36).substring(7);
+        let socket;
+        const texturePlayers = "https://cdn.glitch.global/b0db6839-88eb-41df-a72e-b773f6282601/template-player.png?v=1743396041346";
+        let clock = new THREE.Clock();
+      
+        let cameraYaw = 0;     // Arah rotasi horizontal
+        let cameraPitch = 0;   // Arah rotasi vertikal
+        let isMouseDown = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+      
+        const BORDER_LIMIT = 200;
+
+        let cameraMode = 3;
+
+
+        function startGame() {
+            playerName = document.getElementById("nameInput").value.trim() || "Player_" + playerId;
+            document.getElementById("inputContainer").style.display = "none";
+            initGame();
+        }
+
+        function initGame() {
+            console.log("Memulai game...");
+            socket = new WebSocket("wss://mini-bloxd.glitch.me");
+
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xaaaaaa);
+            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            const renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            const textureLoader = new THREE.TextureLoader();
+            const loadTexture = (path) => {
+            const texture = textureLoader.load(path);
+              texture.magFilter = THREE.NearestFilter;
+              texture.minFilter = THREE.NearestFilter;
+            return texture;
+            };
+          
+            const createBox = (size, textures) => { 
+            const materials = [
+              new THREE.MeshBasicMaterial({ map: loadTexture(textures.right), transparent: true, alphaTest: 0.5 }), // right
+              new THREE.MeshBasicMaterial({ map: loadTexture(textures.left), transparent: true, alphaTest: 0.5 }), // left
+              new THREE.MeshBasicMaterial({ map: loadTexture(textures.top), transparent: true, alphaTest: 0.5 }), // top
+              new THREE.MeshBasicMaterial({ map: loadTexture(textures.bottom), transparent: true, alphaTest: 0.5 }), // bottom
+              new THREE.MeshBasicMaterial({ map: loadTexture(textures.front), transparent: true, alphaTest: 0.5 }), // front
+              new THREE.MeshBasicMaterial({ map: loadTexture(textures.back), transparent: true, alphaTest: 0.5 })  // back
+            ];
+
+            const geometry = new THREE.BoxGeometry(size.x, size.y, size.z);
+            const cube = new THREE.Mesh(geometry, materials);
+              //cube.scale.x = -1;
+              return cube;
+            };
+const textures = {
+                  head: {
+                      right: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/right-head.png',
+                      left: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/left-head.png',
+                      top: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/top-head.png',
+                      bottom: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/buttom-head.png',
+                      front: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/face-head.png',
+                      back: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/top-head.png'
+                  },
+                  body: {
+                      right: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/side-body.png',
+                      left: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/side-body.png',
+                      top: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/tp-body.png',
+                      bottom: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/tp-body.png',
+                      front: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/front-body.png',
+                      back: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/back-body.png'
+                  },
+                  arm: {
+                    base : {
+                      right: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/side-arm.png',
+                      left: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/side-arm.png',
+                      top: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/top-arm.png',
+                      bottom: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/buttom-arm.png',
+                      front: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/side-arm.png',
+                      back: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/side-arm.png'
+                    },
+                    overlay: {
+                      right: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/overlay-arm.png',
+                      left: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/overlay-arm.png',
+                      top: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/overlay-buttom-arm.png',
+                      bottom: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/overlay-buttom-arm.png',
+                      front: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/overlay-back-arm.png',
+                      back: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/overlay-back-arm.png'
+                    }
+                  },
+                  leg: {
+                    base : {
+                      right: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/side-arm.png',
+                      left: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/side-arm.png',
+                      top: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/top-arm.png',
+                      bottom: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/buttom-arm.png',
+                      front: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/side-arm.png',
+                      back: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/side-arm.png'
+                    },
+                    overlay: {
+                      right: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/overlay-arm.png',
+                      left: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/overlay-arm.png',
+                      top: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/overlay-buttom-arm.png',
+                      bottom: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/overlay-buttom-arm.png',
+                      front: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/overlay-back-arm.png',
+                      back: 'https://raw.githubusercontent.com/MaskStarmoon/New-api/refs/heads/main/mini-bloxd-char/overlay-back-arm.png'
+                    }
+                  },
+};
+            const overlayArm = (size, position) => {
+            const armBase = createBox(size, textures.arm.base);
+            const overlaySize = { x: size.x * 1.02, y: size.y * 1.02, z: size.z * 1.02 };
+            const armOverlay = createBox(overlaySize, textures.arm.overlay);
+            armOverlay.position.set(0, 0, 0.05);
+            const armGroup = new THREE.Group();
+            armGroup.add(armBase);
+            armGroup.add(armOverlay);
+            armGroup.position.set(position.x, position.y, position.z);
+
+              return armGroup;
+            };
+
+            /* *Gunakan texture pack dari GitHub* */
+            const playerTexture = textureLoader.load(texturePlayers);
+            playerTexture.magFilter = THREE.NearestFilter;
+            playerTexture.minFilter = THREE.NearestFilter;
+            const playerMat = new THREE.MeshBasicMaterial({ map: playerTexture, transparent: true, alphaTest: 0.5 });
+            const light = new THREE.AmbientLight(0xffffff, 1.5);
+            scene.add(light);
+
+            const floorTexture = textureLoader.load("https://raw.githubusercontent.com/Bloxdy/texture-packs/main/default/textures/grass_top.png");
+            const floorMat = new THREE.MeshBasicMaterial({ map: floorTexture });
+
+            // Buat lantai dengan texture
+            const floorGeo = new THREE.BoxGeometry(15, 1, 15);
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.position.y = -0.5;
+            scene.add(floor);
+          
+          // **1. Kepala**
+const head = createBox({ x: 0.8, y: 0.8, z: 0.8 }, textures.head);
+
+// **2. Badan**
+const body = createBox({ x: 0.8, y: 1.2, z: 0.4 }, textures.body);
+
+// **3. Kaki **
+const legRight = overlayArm({ x: 0.35, y: 1, z: 0.35 }, { x: -0.2, y: -0.1, z: 0 });
+const legLeft = overlayArm({ x: 0.35, y: 1, z: 0.35 }, { x: 0.2, y: -0.1, z: 0 });
+          
+// **5. Tangan **
+const armRight = overlayArm({ x: 0.35, y: 1.2, z: 0.4 }, { x: -0.58, y: 0.8, z: 0 });
+const armLeft = overlayArm({ x: 0.35, y: 1.2, z: 0.4 }, { x: 0.58, y: 0.8, z: 0 });
+
+            head.position.y = 1.7;
+            body.position.y = 0.8;
+            armRight.rotation.z = -Math.PI / 24; // Miring ke kanan
+            armLeft.rotation.z = Math.PI / 24;  // Miring ke kiri
+
+            const player = new THREE.Group();
+            player.add(head, body, legRight, legLeft, armRight, armLeft);
+            scene.add(player);
+            player.rotation.y = Math.PI;
+
+            let playerLabel;
+            const fontLoader = new THREE.FontLoader();
+            fontLoader.load("https://threejs.org/examples/fonts/helvetiker_regular.typeface.json", function (font) {
+                const textGeo = new THREE.TextGeometry(playerName, {
+                    font: font,
+                    size: 0.3,
+                    height: 0.01
+                });
+                const textMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                playerLabel = new THREE.Mesh(textGeo, textMat);
+                scene.add(playerLabel);
+            });
+
+            let otherPlayers = {};
+            let playerLabels = {};
+
+            camera.position.set(0, 2, 5);
+
+            // Variabel gerakan & gravitasi
+            let keys = {};
+            let velocityY = 0;
+            const gravity = -0.005;
+            const floorChunks = {};
+            const floorSize = 15; // Ukuran satu lantai
+            const jumpPower = 0.12;
+            let isGrounded = false;
+
+            window.addEventListener("keydown", (e) => keys[e.key] = true);
+            window.addEventListener("keyup", (e) => keys[e.key] = false);
+
+            let isSocketReady = false;
+            socket.onopen = () => {
+                console.log("WebSocket terhubung!");
+                isSocketReady = true;
+              
+                // Kirim info pemain baru ke server
+                let playerData = {
+                    type: "join",
+                    id: playerId,
+                    name: playerName,
+                    texture: textures, // Log semua tekstur
+                    action: false,
+                    x: player.position.x,
+                    y: player.position.y,
+                    z: player.position.z,
+                    rotation: {
+                      z: player.rotation.z,
+                      x: player.rotation.x,
+                      y: player.rotation.y
+                    }
+                };
+
+            console.log("Mengirim data pemain:", playerData); // Debug
+            socket.send(JSON.stringify(playerData));
+             };
+  
+let borderCreated = false;
+let borderTexts = []; // Simpan semua mesh text "STOP"
+          
+function createWorldBorder(scale = 2) {
+    const loader = new THREE.FontLoader();
+    loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function (font) {
+        const textMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+
+        const wallSize = BORDER_LIMIT * 2;
+        const wallHeight = 50;
+
+        for (let x = -BORDER_LIMIT; x <= BORDER_LIMIT; x += scale * 6) {
+            for (let y = 0; y <= wallHeight; y += scale * 6) {
+                // Depan & Belakang
+                ["front", "back"].forEach((dir) => {
+                    const textGeo = new THREE.TextGeometry("STOP", {
+                        font,
+                        size: scale,
+                        height: 0.5,
+                    });
+                    const mesh = new THREE.Mesh(textGeo, textMaterial);
+                    mesh.position.set(x, y, dir === "front" ? BORDER_LIMIT : -BORDER_LIMIT);
+                    scene.add(mesh);
+                    borderTexts.push(mesh);
+                });
+
+                // Kiri & Kanan
+                ["left", "right"].forEach((dir) => {
+                    const textGeo = new THREE.TextGeometry("STOP", {
+                        font,
+                        size: scale,
+                        height: 0.5,
+                    });
+                    const mesh = new THREE.Mesh(textGeo, textMaterial);
+                    mesh.rotation.y = Math.PI / 2;
+                    mesh.position.set(dir === "left" ? -BORDER_LIMIT : BORDER_LIMIT, y, x);
+                    scene.add(mesh);
+                    borderTexts.push(mesh);
+                });
+            }
+        }
+    });
+}
+          
+function removeWorldBorder() {
+    borderTexts.forEach(mesh => {
+        scene.remove(mesh);
+    });
+    borderTexts = [];
+    borderCreated = false;
+}
+
+function showBorderWarning() {
+    if (!borderCreated) {
+        createWorldBorder(2); // ukuran 2 agar pas kayak blok
+        borderCreated = true;
+    }
+}
+          
+          
+           const targetRotation = new THREE.Quaternion();
+           const rotationAngle = new THREE.Vector2();
+            //let rotationAngle = { x: 0, y: 0 };
+
+function animateCharacter(isMoving) {
+    const delta = clock.getDelta();
+    const speed = 6; // Kecepatan animasi
+
+    if (keys["ArrowUp"] || keys["w"] || keys["ArrowDown"] || keys["s"] || keys["ArrowLeft"] || keys["a"] || keys["ArrowRight"] || keys["d"]) {
+        const time = clock.getElapsedTime() * speed;
+
+        // Animasi kaki (bergerak naik-turun secara bergantian)
+        legRight.rotation.x = Math.sin(time) * 0.5;
+        legLeft.rotation.x = Math.sin(time + Math.PI) * 0.5;
+
+        // Animasi tangan (bergerak berlawanan dengan kaki)
+        armRight.rotation.x = Math.sin(time + Math.PI) * 0.3;
+        armLeft.rotation.x = Math.sin(time) * 0.3;
+
+        // Atur rotasi arah saat maju/mundur
+    //     if (keys["ArrowUp"]) {
+    //         targetRotation.setFromEuler(new THREE.Euler(0, Math.PI, 0)); // Menghadap ke belakang
+    //     } else if (keys["ArrowDown"]) {
+    //         targetRotation.setFromEuler(new THREE.Euler(0, 0, 0)); // Menghadap ke depan
+    //     } else if (keys["ArrowLeft"]) {
+    //         targetRotation.setFromEuler(new THREE.Euler(0, -Math.PI / 2, 0)); // Ke kiri
+    //     } else if (keys["ArrowRight"]) {
+    //         targetRotation.setFromEuler(new THREE.Euler(0, Math.PI / 2, 0)); // Ke kanan
+    //     }
+    } else {
+        // Hentikan animasi jika tidak bergerak
+        legRight.rotation.x = 0;
+        legLeft.rotation.x = 0;
+        armRight.rotation.x = 0;
+        armLeft.rotation.x = 0;
+    }
+
+    // Lakukan interpolasi rotasi agar transisi mulus
+    player.rotation.y = rotationAngle.y;
+}
+function generateFloorChunk(x, z) {
+    const key = `${x},${z}`;
+    if (floorChunks[key]) return; // Sudah ada, tidak usah buat
+
+    const newFloor = new THREE.Mesh(
+        new THREE.BoxGeometry(floorSize, 1, floorSize),
+        floorMat
+    );
+    newFloor.position.set(x, -0.5, z);
+    scene.add(newFloor);
+    floorChunks[key] = newFloor;
+}
+function update() {
+    let isMoving = false; // Tambahkan flag untuk cek apakah player bergerak
+
+    const direction = new THREE.Vector3();
+
+    const forward = new THREE.Vector3(
+        Math.sin(rotationAngle.y),
+        0,
+        Math.cos(rotationAngle.y)
+    );
+
+    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0));
+
+    if (keys["ArrowUp"] || keys["w"]) {
+        direction.add(forward);
+        isMoving = true;
+    }
+    if (keys["ArrowDown"] || keys["s"]) {
+        direction.sub(forward);
+        isMoving = true;
+    }
+    if (keys["ArrowLeft"] || keys["a"]) {
+        direction.sub(right);
+        isMoving = true;
+    }
+    if (keys["ArrowRight"] || keys["d"]) {
+        direction.add(right);
+        isMoving = true;
+    }
+
+    if (direction.length() > 0) {
+        direction.normalize();
+        player.position.addScaledVector(direction, 0.1);
+        const angle = Math.atan2(direction.x, direction.z);
+        // Smooth rotation (biar nggak langsung patah)
+        player.rotation.y += (angle - player.rotation.y) * 0.2;
+        //player.rotation.y += (cameraYaw - player.rotation.y) * 0.2;
+    }
+
+    // **Lompatan dengan gravitasi**
+    if (keys[" "] && isGrounded) {
+        velocityY = jumpPower;
+        isGrounded = false;
+    }
+
+    // Terapkan gravitasi
+    velocityY += gravity;
+    player.position.y += velocityY;
+
+    // Cek apakah menyentuh tanah
+    if (player.position.y <= 0.5) {
+        player.position.y = 0.5;
+        velocityY = 0;
+        isGrounded = true;
+    }
+  
+  // Hitung chunk posisi player
+const chunkX = Math.floor(player.position.x / floorSize) * floorSize;
+const chunkZ = Math.floor(player.position.z / floorSize) * floorSize;
+
+// Buat lantai di sekitar player (3x3 chunk)
+for (let dx = -1; dx <= 1; dx++) {
+    for (let dz = -1; dz <= 1; dz++) {
+        generateFloorChunk(chunkX + dx * floorSize, chunkZ + dz * floorSize);
+    }
+}
+  
+  for (let key in floorChunks) {
+    const [x, z] = key.split(',').map(Number);
+    const distance = Math.hypot(player.position.x - x, player.position.z - z);
+    if (distance > floorSize * 3) {
+        scene.remove(floorChunks[key]);
+        delete floorChunks[key];
+    }
+}
+
+
+    //const euler = new THREE.Euler().setFromQuaternion(player.quaternion);
+    // 🔹 Kirim Data Posisi & Animasi ke Server
+    if (isSocketReady) {
+        let data = {
+            type: "move",
+            id: playerId,
+            x: player.position.x,
+            y: player.position.y,
+            z: player.position.z,
+            quaternion: { 
+                z: player.quaternion.z,
+                x: player.quaternion.x,
+                y: player.quaternion.y,
+                w: player.quaternion.w
+            },
+            action: isMoving // Kirim animasi berdasarkan pergerakan
+        };
+        socket.send(JSON.stringify(data));
+    }
+
+    // 🔹 Perbarui Label Nama
+    if (playerLabel) {
+        playerLabel.position.set(player.position.x, player.position.y + 2.3, player.position.z);
+    }
+
+    for (let id in playerLabels) {
+        let label = playerLabels[id];
+        if (otherPlayers[id]) {
+            label.position.set(otherPlayers[id].position.x, otherPlayers[id].position.y + 2.1, otherPlayers[id].position.z);
+        }
+    }
+
+    animateCharacter(isMoving); // Jalankan animasi
+  
+  // 🔴 Cek apakah player melewati batas dunia
+const isOutOfBounds = (
+    Math.abs(player.position.x) > BORDER_LIMIT ||
+    Math.abs(player.position.z) > BORDER_LIMIT
+);
+if (isOutOfBounds) {
+    player.position.x = Math.max(-BORDER_LIMIT, Math.min(BORDER_LIMIT, player.position.x));
+    player.position.z = Math.max(-BORDER_LIMIT, Math.min(BORDER_LIMIT, player.position.z));
+    showBorderWarning(); // Tampilkan border
+} else {
+    removeWorldBorder();// Hapus border kalau sudah balik ke dalam
+}
+  
+  
+      // Kamera mengikuti player sesuai mode
+let radius = 5;
+let height = 4;
+
+let offsetX, offsetY, offsetZ;
+
+        if (cameraMode === 1) {
+          // First Person
+          const headOffset = new THREE.Vector3(0, 1.7, 0); // posisi mata dari badan (tinggi)
+          const cameraPosition = headOffset.clone().applyQuaternion(player.quaternion).add(player.position);
+          camera.position.copy(cameraPosition);
+
+          const lookDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion).negate(); // arah belakang
+          const lookAtTarget = player.position.clone().add(lookDirection).add(headOffset.clone().applyQuaternion(player.quaternion));
+          camera.lookAt(lookAtTarget);
+          } else if (cameraMode === 2) {
+          // 🎯 Second Person (kamera menghadap wajah player)
+          offsetX = radius * Math.sin(rotationAngle.y) * Math.cos(rotationAngle.x);
+          offsetY = radius * Math.sin(rotationAngle.x);
+          offsetZ = radius * Math.cos(rotationAngle.y) * Math.cos(rotationAngle.x);
+
+          camera.position.set(
+              player.position.x + offsetX,
+              player.position.y + height + offsetY,
+              player.position.z + offsetZ
+          );
+          camera.lookAt(
+              player.position.x,
+              player.position.y + height,
+              player.position.z
+          );
+
+      } else {
+          // 🎯 Third Person (kamera di belakang player)
+          offsetX = -radius * Math.sin(rotationAngle.y) * Math.cos(rotationAngle.x);
+          offsetY = radius * Math.sin(rotationAngle.x);
+          offsetZ = -radius * Math.cos(rotationAngle.y) * Math.cos(rotationAngle.x);
+
+          camera.position.set(
+              player.position.x + offsetX,
+              player.position.y + height + offsetY,
+              player.position.z + offsetZ
+          );
+          camera.lookAt(
+              player.position.x,
+              player.position.y + height,
+              player.position.z
+          );
+      }
+  
+    // Kamera mengikuti dan berbalik sesuai arah pemain
+// let offsetX = -radius * Math.sin(rotationAngle.y) * Math.cos(rotationAngle.x);
+// let offsetY = radius * Math.sin(rotationAngle.x);
+// let offsetZ = -radius * Math.cos(rotationAngle.y) * Math.cos(rotationAngle.x);
+
+// camera.position.set(
+//     player.position.x + offsetX,
+//     player.position.y + height + offsetY,
+//     player.position.z + offsetZ
+// );
+
+// camera.lookAt(player.position.x, player.position.y + 2, player.position.z);
+  
+    renderer.render(scene, camera);
+    requestAnimationFrame(update);
+}
+                requestAnimationFrame(update);
+          
+document.body.addEventListener("click", () => {
+    document.body.requestPointerLock();
+});
+          
+document.addEventListener("mousedown", (e) => {
+    isMouseDown = true;
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+});
+
+document.addEventListener("mouseup", () => {
+    isMouseDown = false;
+});
+
+document.addEventListener("mousemove", (event) => {
+    if (isMouseDown) {
+        rotationAngle.y -= event.movementX * 0.002; // kiri-kanan (yaw)
+        rotationAngle.x -= event.movementY * 0.002; // atas-bawah (pitch)
+
+        // Batasi pitch supaya kamera nggak muter 360 derajat ke atas/bawah
+        rotationAngle.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, rotationAngle.x));
+    }
+});
+          
+document.getElementById("ubahKamera").addEventListener("click", () => {
+        cameraMode = (cameraMode + 1) % 3;
+        console.log("Mode kamera sekarang:", cameraMode);
+    });
+          
+// // Deteksi tombol R di keyboard
+document.addEventListener('keydown', function(e) {
+    if (e.key.toLowerCase() === 'r') {
+        cameraMode++;
+        if (cameraMode > 3) cameraMode = 1;
+    }
+});
+          
+socket.onmessage = async (event) => {
+    let data = JSON.parse(event.data);
+
+    if (data.type === "update") { 
+        // 🔄 Loop untuk update pemain lain
+        for (let id in data.players) {
+            if (id !== playerId) {
+                if (!otherPlayers[id]) { 
+                    let textureLoader = new THREE.TextureLoader();
+                    let playerData = data.players[id];
+                    let texturesPlayers = playerData.texture || {}; 
+
+                    const loadTexture = (path) => {
+                        if (!path) return null;
+                        const texture = textureLoader.load(path);
+                        texture.magFilter = THREE.NearestFilter;
+                        texture.minFilter = THREE.NearestFilter;
+                        return texture;
+                    };
+
+                    const createBox = (size, textures) => { 
+                        const materials = [
+                            new THREE.MeshBasicMaterial({ map: loadTexture(textures.right), transparent: true, alphaTest: 0.5 }),
+                            new THREE.MeshBasicMaterial({ map: loadTexture(textures.left), transparent: true, alphaTest: 0.5 }),
+                            new THREE.MeshBasicMaterial({ map: loadTexture(textures.top), transparent: true, alphaTest: 0.5 }),
+                            new THREE.MeshBasicMaterial({ map: loadTexture(textures.bottom), transparent: true, alphaTest: 0.5 }),
+                            new THREE.MeshBasicMaterial({ map: loadTexture(textures.front), transparent: true, alphaTest: 0.5 }),
+                            new THREE.MeshBasicMaterial({ map: loadTexture(textures.back), transparent: true, alphaTest: 0.5 })
+                        ];
+                        const geometry = new THREE.BoxGeometry(size.x, size.y, size.z);
+                        const cube = new THREE.Mesh(geometry, materials);
+                        cube.scale.x = -1;
+                        return cube;
+                    };
+
+                    const overlayArm = (size, position, name) => {
+                        const armBase = createBox(size, texturesPlayers.arm?.base || {});
+                        const overlaySize = { x: size.x * 1.02, y: size.y * 1.02, z: size.z * 1.02 };
+                        const armOverlay = createBox(overlaySize, texturesPlayers.arm?.overlay || {});
+                        armOverlay.position.set(0, 0, 0.05);
+                        const armGroup = new THREE.Group();
+                        armGroup.add(armBase);
+                        armGroup.add(armOverlay);
+                        armGroup.position.set(position.x, position.y, position.z);
+                        armGroup.name = name; // 🔹 Tambahkan name supaya bisa diakses
+
+                        return armGroup;
+                    };
+
+                    let head = createBox({ x: 0.8, y: 0.8, z: 0.8 }, texturesPlayers.head);
+                    let body = createBox({ x: 0.8, y: 1.2, z: 0.4 }, texturesPlayers.body);
+                    let legRight = overlayArm({ x: 0.35, y: 1, z: 0.35 }, { x: -0.2, y: -0.1, z: 0 }, "legRight");
+                    let legLeft = overlayArm({ x: 0.35, y: 1, z: 0.35 }, { x: 0.2, y: -0.1, z: 0 }, "legLeft");
+                    let armRight = overlayArm({ x: 0.35, y: 1.2, z: 0.4 }, { x: -0.58, y: 0.8, z: 0 }, "armRight");
+                    let armLeft = overlayArm({ x: 0.35, y: 1.2, z: 0.4 }, { x: 0.58, y: 0.8, z: 0 }, "armLeft");
+
+                    head.position.y = 1.7;
+                    body.position.y = 0.8;
+                    armRight.rotation.z = -Math.PI / 24;
+                    armLeft.rotation.z = Math.PI / 24;
+
+                    let playerGroup = new THREE.Group();
+                    playerGroup.add(head);
+                    playerGroup.add(body);
+                    playerGroup.add(armLeft);
+                    playerGroup.add(armRight);
+                    playerGroup.add(legRight);
+                    playerGroup.add(legLeft);
+                    //playerGroup.name = id; // 🔹 Nama untuk akses nanti
+
+                    scene.add(playerGroup);
+                    otherPlayers[id] = playerGroup;
+                  
+                    // 🔹 Tambahkan Nama di Atas Karakter
+                    fontLoader.load("https://threejs.org/examples/fonts/helvetiker_regular.typeface.json", function (font) {
+                          const textGeo = new THREE.TextGeometry(data.players[id].name, {
+                            font: font,
+                            size: 0.3,
+                            height: 0.01
+                          });
+                          const textMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                          let playerText = new THREE.Mesh(textGeo, textMat);
+                          playerText.position.set(0, 2.2, 0);
+                          scene.add(playerText);
+                          playerLabels[id] = playerText;
+                    });
+                  }
+            }
+      }
+
+        // 🔄 Hapus pemain yang tidak ada di server
+        for (let id in otherPlayers) {
+            if (!data.players[id]) {
+                scene.remove(otherPlayers[id]);
+                delete otherPlayers[id];
+            }
+        }
+    } 
+
+    else if (data.type === "move") {
+    let player = otherPlayers[data.id];
+    if (player) {
+        player.position.set(data.x, data.y, data.z);
+
+        // ✅ Hanya set quaternion sekali, jangan diubah pakai Euler lagi
+        if (data.quaternion) {
+            const { x, y, z, w } = data.quaternion;
+            player.quaternion.set(x, y, z, w);
+        }
+
+        // 🔹 Ambil kaki & tangan untuk animasi berjalan
+        let legRight = player.getObjectByName("legRight");
+        let legLeft = player.getObjectByName("legLeft");
+        let armRight = player.getObjectByName("armRight");
+        let armLeft = player.getObjectByName("armLeft");
+
+        if (data.moving) {
+            let time = performance.now() * 0.005;
+            if (legRight && legLeft && armRight && armLeft) {
+                // Animasi goyang kaki/tangan
+                legRight.rotation.x = Math.sin(time) * 0.5;
+                legLeft.rotation.x = Math.sin(time + Math.PI) * 0.5;
+                armRight.rotation.x = Math.sin(time + Math.PI) * 0.3;
+                armLeft.rotation.x = Math.sin(time) * 0.3;
+            }
+        } else {
+            if (legRight && legLeft && armRight && armLeft) {
+                legRight.rotation.x = 0;
+                legLeft.rotation.x = 0;
+                armRight.rotation.x = 0;
+                armLeft.rotation.x = 0;
+                }
+            }
+        }
+    }
+            
+};
+          
+            socket.onerror = (error) => {
+                console.error("WebSocket Error:", error);
+            };
+        }
+    </script>
+</body>
+</html>
